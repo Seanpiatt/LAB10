@@ -10,6 +10,7 @@ constexpr int INIT_ITERS = 64;
 
 int main() {
     // OpenGL settings we request for:
+    auto start = std::chrono::steady_clock::now();
     sf::ContextSettings settings;
     settings.depthBits = 24;   // 24-bit depth buffer
     settings.stencilBits = 8;  // 8-bit stencil buffer
@@ -39,6 +40,15 @@ int main() {
     // load vertex and fragment shaders:
     sf::Shader shader(std::filesystem::path{"main.vert"}, std::filesystem::path{"main.frag"});
     // ... other shaders can go here...
+    sf::Shader shaderBack(std::filesystem::path{"main.vert"}, std::filesystem::path{"copy.frag"});
+
+    sf::RenderTexture renderTextureBack({1280, 720});
+    sf::RenderTexture renderTextureFront({1280, 720});
+    renderTextureFront.setSmooth(true);
+    renderTextureBack.setSmooth(true);
+    sf::RenderTexture* front = &renderTextureFront;
+    sf::RenderTexture* back  = &renderTextureBack;
+
 
     sf::Font openSansFont(EmbeddedFonts::OpenSans_SemiBold_ttf,
                           EmbeddedFonts::OpenSans_SemiBold_ttf_len);
@@ -53,9 +63,19 @@ int main() {
     cTextShadow.setOutlineColor(sf::Color(0, 0, 0, 130));
     cTextShadow.setOutlineThickness(3);
     sf::Vector2f c{-0.039, 0.68};
+    sf::Vector2f prevC{-0.039, 0.68};
+
     float worldUnitsPerPixel = 1.f / window.getSize().y;
+
+    float prevWorldUnitsPerPixel = 1.f / window.getSize().y;
+
+    float prevCamWorldUnitsPerPixel = 1.f / window.getSize().y;
+
     sf::Vector2f camCenterWorld{0.f, 0.f};
+    sf::Vector2f prevCamCenterWorld{0.f, 0.f};
     int maxIters = INIT_ITERS;
+
+    bool firstFrame = true;
 
     int i = -1;
     while (window.isOpen()) {
@@ -81,6 +101,7 @@ int main() {
             moved = true;
         }
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::S)) {
+            
             c.y -= 0.001;
             moved = true;
         }
@@ -89,6 +110,7 @@ int main() {
             moved = true;
         }
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::D)) {
+
             c.x += 0.001;
             moved = true;
         }
@@ -96,7 +118,7 @@ int main() {
             camCenterWorld.y += 2 * worldUnitsPerPixel;
             moved = true;
         }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Down)) {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Down)){
             camCenterWorld.y -= 2 * worldUnitsPerPixel;
             moved = true;
         }
@@ -114,9 +136,37 @@ int main() {
             maxIters = std::min(maxIters * 2, TRUE_MAX_ITERS);
         }
         // TODO set shader uniforms here...
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<float> diff = end - start;
+        sf::Vector2f windowSize{1280.f, 720.f};
 
-        window.clear(sf::Color::Black);
-        // TODO something.draw(fullscreenTriangle, &shader);
+        shader.setUniform("c",c);
+        shader.setUniform("firstFrame",firstFrame);
+
+        shader.setUniform("MAX_ITERS",maxIters);
+        shader.setUniform("TRUE_MAX_ITER",TRUE_MAX_ITERS);
+        shader.setUniform("windowSizePixels",windowSize);
+
+        shader.setUniform("camCenterWorld",camCenterWorld);
+        shader.setUniform("camWorldUnitsPerPixel",worldUnitsPerPixel);
+
+        //Previous Uniforms:
+        shader.setUniform("prevC",prevC);
+        shader.setUniform("prevCamCenterWorld",prevCamCenterWorld);
+        shader.setUniform("prevCamWorldUnitsPerPixel",prevCamWorldUnitsPerPixel);
+
+
+
+        shader.setUniform("prevFrame", renderTextureBack.getTexture());
+
+        renderTextureFront.clear();
+        renderTextureFront.draw(fullscreenTriangle, &shader);
+        renderTextureFront.display();
+
+        shaderBack.setUniform("toCopy", renderTextureFront.getTexture());
+        window.clear();
+        window.draw(fullscreenTriangle, &shader);
+
         // this might change as you finish more parts!
         cText.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
         cTextShadow.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
@@ -124,7 +174,14 @@ int main() {
         window.draw(cText);
         window.display();
 
+        std::swap(front, back);
         // TODO (reprojection)... update "old" states
+        firstFrame = false;
+        prevCamCenterWorld = camCenterWorld;
+        prevC = c;
+        prevCamWorldUnitsPerPixel  = worldUnitsPerPixel;
+
+
     }
     return 0;
 }
